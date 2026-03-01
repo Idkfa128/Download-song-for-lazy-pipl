@@ -3,52 +3,91 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 
-def download_music(file_path):
-    df = pd.read_csv(file_path, sep='\t', header=None, names=["Название", "Исполнитель", "Длительность"])
+SITES = [
+    {
+        'name': 'HitMotop',
+        'search_base_url': 'https://rus.hitmotop.com/search?q={}',
+        'download_selector': '.song-link > a[href]'
+    },
+    {
+        'name': 'Zvukofon',
+        'search_base_url': 'https://muz.zvukofon.com/music/{}',
+        'download_selector': '.topcharts__item-info-btn_download'
+    }
+]
 
-    df.fillna('', inplace=True)
+def find_and_download_song(title, artist):
+    """Функция ищет песню на заданных сайтах и скачивает её."""
+    print(f"Пытаемся скачать: {title} ({artist})")
 
-    output_folder = r"F:\Audio"
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+    search_query = f"{artist}+{title}"
+    
+    for site in SITES:
+        print(f"\nПроверяем сайт: {site['name']}")
+        
 
-    base_url = "https://rus.hitmotop.com/search?q="
-
-    for _, row in df.iterrows():
-        title = row["Название"].strip()
-        artist = row["Исполнитель"].strip()
-        print(f"Обрабатываю: {title}, {artist}")
-
-        search_query = f"{artist} {title}".replace(" ", "+")
-        full_url = base_url + search_query
-
-        print(f"Ищем '{title}' от {artist}: {full_url}")
-
+        full_url = site['search_base_url'].format(search_query)
+        print(f"URL для поиска: {full_url}")
+        
         try:
             response = requests.get(full_url)
-            response.raise_for_status()  
+            response.raise_for_status()
 
             soup = BeautifulSoup(response.text, 'html.parser')
 
-            download_links = soup.select('.song-link > a[href]')
-
+            download_links = soup.select(site['download_selector'])
+            
             if download_links:
-                first_link = download_links[0]['href']
-
-                music_response = requests.get(first_link)
+                link = download_links[0].get('href')
+                
+           
+                if not link.startswith('http'):
+                    link = 'https://muz.zvukofon.com/' + link
+                    
+           
+                print(f"Нажата кнопка скачивания: {link}")
+                music_response = requests.get(link)
+                
                 if music_response.status_code == 200:
                     filename = f"{artist}-{title}.mp3"
                     filepath = os.path.join(output_folder, filename)
-
+                    
                     with open(filepath, 'wb') as file:
                         file.write(music_response.content)
-
-                    print(f"Скачано: {filename}")
+                        
+                    print(f"Трек успешно сохранён: {filepath}")
+                    return True
                 else:
                     print("Ошибка при скачивании.")
             else:
-                print("Ссылка на музыкальный файл не найдена.")
-        except requests.RequestException as err:
-            print(f"Ошибка HTTP: {err}")
+                print("Композиция не найдена на данном сайте.")
+        except Exception as e:
+            print(f"Ошибка при обработке страницы: {e}")
+    
+    print("\nКомпозицию не удалось найти ни на одном сайте.")
+    return False
+def main():
+    global output_folder
+    df = pd.read_csv(r'C:\Users\Admin\Desktop\muzik.txt', sep='\t', header=None, names=['Название', 'Исполнитель', 'Длительность'])
+    df.fillna('', inplace=True)
+    
+    output_folder = r'D:'
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+    
+    success_count = 0
+    total_songs = len(df)
+    
+    for index, row in df.iterrows():
+        title = row['Название'].strip()
+        artist = row['Исполнитель'].strip()
+        
+        if find_and_download_song(title, artist):
+            success_count += 1
+    
+    print(f'\n\nВсего обработано композиций: {total_songs}')
+    print(f'Успешно скачаны: {success_count}')
+    print(f'Не найдены: {total_songs - success_count}')
 
-download_music(r'C:\Users\User\Desktop\muzik.txt')
+if __name__ == "__main__":
+    main()
